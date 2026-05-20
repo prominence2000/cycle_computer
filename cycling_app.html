@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>CycleLog — サイクリング記録</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --green: #00E87A;
+    --green-dim: #00b85f;
+    --bg: #0a0f0d;
+    --bg2: #111a15;
+    --bg3: #182219;
+    --border: #1e2e22;
+    --text: #e8f5ec;
+    --text2: #7aab87;
+    --text3: #3d6647;
+    --red: #ff4d4d;
+    --blue: #3d9bff;
+    --font-head: 'Syne', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-mono); overflow: hidden; }
+
+  .app { display: flex; flex-direction: column; height: 100vh; max-width: 430px; margin: 0 auto; position: relative; }
+
+  /* Header */
+  .header { padding: 14px 18px 10px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: var(--bg); flex-shrink: 0; }
+  .logo { font-family: var(--font-head); font-size: 20px; font-weight: 800; letter-spacing: -0.5px; color: var(--green); }
+  .logo span { color: var(--text2); font-weight: 400; font-size: 14px; }
+  .gps-pill { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text3); padding: 4px 10px; border: 1px solid var(--border); border-radius: 99px; }
+  .gps-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); }
+  .gps-dot.active { background: var(--green); animation: blink 1.2s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+  /* Tabs */
+  .tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg); flex-shrink: 0; }
+  .tab { flex: 1; padding: 10px 4px; font-size: 11px; font-family: var(--font-mono); background: transparent; border: none; cursor: pointer; color: var(--text3); letter-spacing: .5px; text-transform: uppercase; border-bottom: 2px solid transparent; transition: color .2s; }
+  .tab.active { color: var(--green); border-bottom: 2px solid var(--green); }
+
+  /* Panels */
+  .panel { display: none; flex: 1; overflow-y: auto; overflow-x: hidden; }
+  .panel.active { display: flex; flex-direction: column; }
+  .panel::-webkit-scrollbar { width: 3px; }
+  .panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Map */
+  #map-canvas { width: 100%; height: 220px; display: block; background: var(--bg2); flex-shrink: 0; }
+
+  /* Stats grid */
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); flex-shrink: 0; }
+  .stat-box { background: var(--bg2); padding: 10px 8px; text-align: center; }
+  .stat-val { font-family: var(--font-head); font-size: 18px; font-weight: 700; color: var(--green); letter-spacing: -1px; }
+  .stat-lbl { font-size: 9px; color: var(--text3); margin-top: 2px; text-transform: uppercase; letter-spacing: .5px; }
+  .stats-grid2 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); flex-shrink: 0; }
+
+  /* Controls */
+  .ctrl { display: flex; gap: 8px; align-items: center; padding: 12px 14px; flex-wrap: wrap; flex-shrink: 0; border-top: 1px solid var(--border); }
+  .btn { border: 1px solid var(--border); background: transparent; border-radius: 6px; padding: 8px 14px; font-size: 12px; font-family: var(--font-mono); cursor: pointer; color: var(--text); letter-spacing: .3px; transition: all .15s; }
+  .btn:hover { border-color: var(--text2); color: var(--green); }
+  .btn-primary { background: var(--green); color: var(--bg); border-color: var(--green); font-weight: 500; }
+  .btn-primary:hover { background: var(--green-dim); border-color: var(--green-dim); color: var(--bg); }
+  .btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
+  .btn-danger:hover { background: #cc3333; border-color: #cc3333; color: #fff; }
+  .btn-xl { background: #217346; color: #fff; border-color: #217346; }
+  .btn-xl:hover { background: #145a32; border-color: #145a32; color: #fff; }
+  .btn-fb { background: #1877F2; color: #fff; border-color: #1877F2; }
+  .btn-fb:hover { background: #0d5fd4; border-color: #0d5fd4; color: #fff; }
+
+  .weight-row { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text2); flex-shrink: 0; }
+  .weight-row input[type=number] { width: 60px; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 12px; font-family: var(--font-mono); color: var(--green); }
+  .msg-bar { font-size: 11px; color: var(--text3); padding: 5px 14px 8px; font-family: var(--font-mono); flex-shrink: 0; }
+
+  /* Section */
+  .section { padding: 14px; border-bottom: 1px solid var(--border); }
+  .sect-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text3); margin-bottom: 10px; font-family: var(--font-head); }
+
+  /* Chart wrapper */
+  .chart-wrap { position: relative; width: 100%; height: 160px; }
+
+  /* Segment table */
+  .seg-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .seg-table th { text-align: left; padding: 5px 8px; color: var(--text3); font-weight: 400; border-bottom: 1px solid var(--border); }
+  .seg-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--text); }
+  .seg-table tr:last-child td { border-bottom: none; }
+  .seg-table td.num { font-family: var(--font-head); font-weight: 600; color: var(--green); }
+
+  /* Excel tab */
+  .date-list { display: flex; flex-direction: column; gap: 6px; }
+  .date-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; transition: border-color .15s; }
+  .date-row:hover { border-color: var(--text3); }
+  .date-row.selected { border-color: var(--green); background: rgba(0,232,122,.06); }
+  .date-icon { font-size: 20px; }
+  .date-name { font-size: 13px; font-family: var(--font-head); font-weight: 600; color: var(--text); }
+  .date-meta { font-size: 11px; color: var(--text2); margin-top: 2px; }
+  .date-check { margin-left: auto; color: var(--green); font-size: 18px; display: none; }
+  .date-row.selected .date-check { display: block; }
+
+  .sheets-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .sheet-opt { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; cursor: pointer; color: var(--text2); }
+  .sheet-opt input { accent-color: var(--green); }
+
+  .preview-wrap { overflow-x: auto; }
+  .preview-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .preview-table th { background: rgba(0,232,122,.1); color: var(--green); padding: 6px 10px; text-align: left; font-weight: 500; white-space: nowrap; border-bottom: 1px solid var(--border); }
+  .preview-table td { padding: 5px 10px; border-bottom: 1px solid var(--border); color: var(--text); font-family: var(--font-mono); }
+  .preview-table tr:last-child td { border-bottom: none; }
+
+  /* Facebook */
+  .fb-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .fb-user { display: flex; align-items: center; gap: 10px; }
+  .fb-avatar { width: 38px; height: 38px; border-radius: 50%; background: #1877F2; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: #fff; font-family: var(--font-head); flex-shrink: 0; }
+  .fb-name { font-size: 14px; font-family: var(--font-head); font-weight: 600; color: var(--text); }
+  .status-pill { font-size: 11px; padding: 2px 9px; border-radius: 99px; display: inline-flex; align-items: center; gap: 4px; }
+  .connected { background: rgba(0,232,122,.15); color: var(--green); }
+  .disconnected { background: var(--bg3); color: var(--text3); border: 1px solid var(--border); }
+  textarea { width: 100%; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: 12px; font-family: var(--font-mono); color: var(--text); resize: vertical; min-height: 90px; }
+  textarea:focus { outline: none; border-color: var(--text3); }
+  .fb-preview-box { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+  .fb-stats-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; margin-top: 8px; }
+  .fb-stat { background: rgba(24,119,242,.1); border-radius: 6px; padding: 6px; text-align: center; }
+  .fb-stat-val { font-size: 14px; font-family: var(--font-head); font-weight: 700; color: var(--blue); }
+  .fb-stat-lbl { font-size: 10px; color: var(--text3); margin-top: 1px; }
+
+  /* History */
+  .hist-list { display: flex; flex-direction: column; gap: 8px; }
+  .hist-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; justify-content: space-between; align-items: flex-start; }
+  .hist-date { font-size: 13px; font-family: var(--font-head); font-weight: 600; color: var(--text); }
+  .hist-meta { font-size: 11px; color: var(--text2); margin-top: 3px; line-height: 1.8; }
+  .badge { font-size: 10px; padding: 2px 8px; border-radius: 99px; background: rgba(0,232,122,.12); color: var(--green); border: 1px solid rgba(0,232,122,.2); }
+  .badge-fb { font-size: 10px; padding: 2px 8px; border-radius: 99px; background: rgba(24,119,242,.12); color: var(--blue); border: 1px solid rgba(24,119,242,.2); }
+
+  /* Settings */
+  .setting-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .setting-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text3); margin-bottom: 5px; }
+  input[type=text] { width: 100%; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; font-size: 12px; font-family: var(--font-mono); color: var(--green); }
+  input[type=text]:focus { outline: none; border-color: var(--text3); }
+  .steps-list { font-size: 11px; color: var(--text2); line-height: 2.2; padding-left: 16px; }
+
+  .empty { text-align: center; color: var(--text3); font-size: 12px; padding: 40px 0; }
+  .msg-sm { font-size: 11px; color: var(--text3); padding: 4px 0 0; }
+
+  /* Safe area for iPhone */
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="logo">CycleLog <span>/ ライド記録</span></div>
+    <div class="gps-pill"><div class="gps-dot" id="dot"></div><span id="gps-txt">待機中</span></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('record')">記録</button>
+    <button class="tab" onclick="switchTab('analysis')">分析</button>
+    <button class="tab" onclick="switchTab('excel')">Excel</button>
+    <button class="tab" onclick="switchTab('share')">FB投稿</button>
+    <button class="tab" onclick="switchTab('history')">履歴</button>
+    <button class="tab" onclick="switchTab('settings')">設定</button>
+  </div>
+
+  <!-- RECORD -->
+  <div id="tab-record" class="panel active">
+    <canvas id="map-canvas"></canvas>
+    <div class="stats-grid">
+      <div class="stat-box"><div class="stat-val" id="s-dist">0.00</div><div class="stat-lbl">距離 km</div></div>
+      <div class="stat-box"><div class="stat-val" id="s-spd">0.0</div><div class="stat-lbl">速度 km/h</div></div>
+      <div class="stat-box"><div class="stat-val" id="s-dur">00:00</div><div class="stat-lbl">走行時間</div></div>
+      <div class="stat-box"><div class="stat-val" id="s-cal">0</div><div class="stat-lbl">消費 kcal</div></div>
+    </div>
+    <div class="stats-grid2">
+      <div class="stat-box"><div class="stat-val" id="s-alt">—</div><div class="stat-lbl">高度 m</div></div>
+      <div class="stat-box"><div class="stat-val" id="s-gain">0</div><div class="stat-lbl">獲得標高 m</div></div>
+      <div class="stat-box"><div class="stat-val" id="s-break">00:00</div><div class="stat-lbl">休憩時間</div></div>
+    </div>
+    <div class="weight-row">
+      <span>体重</span>
+      <input id="weight-in" type="number" value="65" min="30" max="150"> kg
+    </div>
+    <div class="ctrl">
+      <button class="btn btn-primary" id="btn-start" onclick="startRide()">▶ 記録開始</button>
+      <button class="btn btn-danger" id="btn-stop" style="display:none" onclick="stopRide()">⏸ 停止</button>
+      <button class="btn" id="btn-save" style="display:none" onclick="saveRide()">💾 保存</button>
+      <button class="btn" id="btn-gpx" style="display:none" onclick="exportGPX()">↓ GPX</button>
+      <button class="btn" id="btn-reset" style="display:none" onclick="resetRide()">↺ リセット</button>
+    </div>
+    <div class="msg-bar safe-bottom" id="msg">「記録開始」を押してライドを開始します</div>
+  </div>
+
+  <!-- ANALYSIS -->
+  <div id="tab-analysis" class="panel">
+    <div class="section">
+      <div class="sect-label">10分ごとの速度 (km/h)</div>
+      <div class="chart-wrap"><canvas id="spd-chart"></canvas></div>
+    </div>
+    <div class="section">
+      <div class="sect-label">高度変化 (m)</div>
+      <div class="chart-wrap"><canvas id="alt-chart"></canvas></div>
+    </div>
+    <div class="section safe-bottom">
+      <div class="sect-label">区間サマリー</div>
+      <div id="seg-table-wrap" style="font-size:12px;color:var(--text3)">記録後に表示されます</div>
+    </div>
+  </div>
+
+  <!-- EXCEL -->
+  <div id="tab-excel" class="panel">
+    <div class="section">
+      <div class="sect-label">走行日を選択</div>
+      <div class="date-list" id="xl-date-list"><div class="empty">保存済みライドがありません</div></div>
+    </div>
+    <div class="section">
+      <div class="sect-label">出力シートを選択</div>
+      <div class="sheets-grid">
+        <label class="sheet-opt"><input type="checkbox" id="sh-summary" checked> サマリー</label>
+        <label class="sheet-opt"><input type="checkbox" id="sh-segments" checked> 10分区間</label>
+        <label class="sheet-opt"><input type="checkbox" id="sh-gps" checked> GPSログ</label>
+        <label class="sheet-opt"><input type="checkbox" id="sh-chart" checked> スピードデータ</label>
+      </div>
+    </div>
+    <div class="section" id="xl-preview-section" style="display:none">
+      <div class="sect-label">プレビュー（サマリー）</div>
+      <div class="preview-wrap"><table class="preview-table" id="xl-preview-table"></table></div>
+    </div>
+    <div class="ctrl safe-bottom">
+      <button class="btn" onclick="previewExcel()">👁 プレビュー</button>
+      <button class="btn btn-xl" onclick="exportExcel()" style="flex:1">📊 Excelダウンロード</button>
+    </div>
+    <div class="msg-bar" id="xl-msg"></div>
+  </div>
+
+  <!-- SHARE -->
+  <div id="tab-share" class="panel">
+    <div class="section safe-bottom">
+      <div class="fb-card">
+        <div class="fb-user">
+          <div class="fb-avatar" id="fb-avatar">?</div>
+          <div>
+            <div class="fb-name" id="fb-name">未ログイン</div>
+            <div id="fb-status" class="status-pill disconnected">● 未接続</div>
+          </div>
+          <button class="btn btn-fb" id="btn-fb-login" onclick="fbLogin()" style="margin-left:auto;font-size:11px">ログイン</button>
+          <button class="btn" id="btn-fb-logout" onclick="fbLogout()" style="margin-left:auto;display:none;font-size:11px">ログアウト</button>
+        </div>
+        <div>
+          <div class="sect-label" style="margin-bottom:6px">投稿文</div>
+          <textarea id="post-text" placeholder="ライドの感想を入力..."></textarea>
+          <button class="btn" onclick="generatePostText()" style="font-size:11px;margin-top:6px">✨ データから自動生成</button>
+        </div>
+        <div id="post-preview" style="display:none">
+          <div class="sect-label" style="margin-bottom:6px">プレビュー</div>
+          <div class="fb-preview-box">
+            <div style="font-size:12px;white-space:pre-wrap;color:var(--text)" id="preview-text"></div>
+            <div class="fb-stats-row">
+              <div class="fb-stat"><div class="fb-stat-val" id="pv-dist">—</div><div class="fb-stat-lbl">距離 km</div></div>
+              <div class="fb-stat"><div class="fb-stat-val" id="pv-dur">—</div><div class="fb-stat-lbl">走行時間</div></div>
+              <div class="fb-stat"><div class="fb-stat-val" id="pv-cal">—</div><div class="fb-stat-lbl">kcal</div></div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" onclick="previewPost()" style="font-size:12px">👁 プレビュー</button>
+          <button class="btn btn-fb" onclick="postToFacebook()" style="flex:1;font-size:12px">Facebook に投稿</button>
+        </div>
+        <div class="msg-sm" id="fb-msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY -->
+  <div id="tab-history" class="panel">
+    <div class="section" style="padding-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+      <div class="sect-label" style="margin-bottom:0">保存済みライド</div>
+      <button class="btn" onclick="clearHistory()" style="font-size:11px;padding:4px 10px">全削除</button>
+    </div>
+    <div class="section safe-bottom">
+      <div class="hist-list" id="hist-list"><div class="empty">まだ保存されたライドがありません</div></div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="tab-settings" class="panel">
+    <div class="section">
+      <div class="setting-card">
+        <div class="sect-label" style="margin-bottom:10px">Facebook アプリ設定</div>
+        <div style="margin-bottom:10px">
+          <div class="setting-label">App ID</div>
+          <input type="text" id="fb-app-id" placeholder="例: 1234567890123456" oninput="saveFbSettings()">
+        </div>
+        <div style="margin-bottom:12px">
+          <div class="setting-label">ページアクセストークン（任意）</div>
+          <input type="text" id="fb-page-token" placeholder="EAAxxxxxxx..." oninput="saveFbSettings()">
+        </div>
+        <button class="btn btn-fb" onclick="initFBSDK()" style="font-size:12px">SDK初期化・接続テスト</button>
+        <div class="msg-sm" id="sdk-msg"></div>
+      </div>
+    </div>
+    <div class="section safe-bottom">
+      <div class="setting-card">
+        <div class="sect-label" style="margin-bottom:8px">セットアップ手順</div>
+        <ol class="steps-list">
+          <li>developers.facebook.com でアプリを作成</li>
+          <li>製品に「Facebookログイン」を追加</li>
+          <li>有効なOAuthリダイレクトURIを設定</li>
+          <li>App IDをここに入力してSDKを初期化</li>
+          <li>publish_posts パーミッションを申請・審査</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const BREAK_THR=1.0, SEG_MIN=10;
+let points=[], watchId=null, startTime=null, rideTimer=null;
+let totalDist=0, lastPoint=null, totalBreak=0, breakStart=null;
+let altGain=0, lastAlt=null, spdChart=null, altChart=null;
+let fbLoggedIn=false, fbToken=null, fbUserId=null;
+let selectedDateId=null;
+
+const canvas=document.getElementById('map-canvas');
+const ctx=canvas.getContext('2d');
+
+// ── Utils ──
+const hav=(a,b)=>{const R=6371,tr=x=>x*Math.PI/180,dLa=tr(b.lat-a.lat),dLn=tr(b.lng-a.lng);const s=Math.sin(dLa/2)**2+Math.cos(tr(a.lat))*Math.cos(tr(b.lat))*Math.sin(dLn/2)**2;return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s))};
+const cal=(d,w,h)=>Math.round(8*w*h);
+const fmt=ms=>{const s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/60);return h>0?`${h}:${String(m%60).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`};
+const rides=()=>JSON.parse(localStorage.getItem('cycling_rides')||'[]');
+const saveRides=arr=>localStorage.setItem('cycling_rides',JSON.stringify(arr));
+
+// ── Tab switch ──
+function switchTab(name){
+  const names=['record','analysis','excel','share','history','settings'];
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',names[i]===name));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  if(name==='analysis') buildCharts();
+  if(name==='excel') renderDateList();
+  if(name==='history') renderHistory();
+  if(name==='share') {const s=getCurStats();if(parseFloat(s.dist)>0&&!document.getElementById('post-text').value)generatePostText();}
+  if(name==='settings') {document.getElementById('fb-app-id').value=localStorage.getItem('fb_app_id')||'';document.getElementById('fb-page-token').value=localStorage.getItem('fb_page_token')||'';}
+}
+
+// ── GPS / Record ──
+function startRide(){
+  if(!navigator.geolocation){setMsg('Geolocationに対応していません');return}
+  document.getElementById('btn-start').style.display='none';
+  document.getElementById('btn-stop').style.display='';
+  document.getElementById('dot').className='gps-dot active';
+  document.getElementById('gps-txt').textContent='記録中';
+  if(!startTime) startTime=Date.now();
+  rideTimer=setInterval(updateHUD,1000);
+  watchId=navigator.geolocation.watchPosition(onPos,onErr,{enableHighAccuracy:true,maximumAge:2000,timeout:15000});
+}
+function onPos(pos){
+  const now=Date.now(),pt={lat:pos.coords.latitude,lng:pos.coords.longitude,alt:pos.coords.altitude,t:now};
+  const spd=lastPoint?hav(lastPoint,pt)/((now-lastPoint.t)/3600000):0;
+  pt.speed=spd;
+  if(spd<BREAK_THR){if(!breakStart)breakStart=now}
+  else{if(breakStart){totalBreak+=now-breakStart;breakStart=null}if(lastPoint)totalDist+=hav(lastPoint,pt)}
+  if(pt.alt!==null&&lastAlt!==null&&pt.alt>lastAlt)altGain+=pt.alt-lastAlt;
+  if(pt.alt!==null)lastAlt=pt.alt;
+  points.push(pt);lastPoint=pt;
+  document.getElementById('s-spd').textContent=spd.toFixed(1);
+  document.getElementById('s-alt').textContent=pt.alt!==null?Math.round(pt.alt):'—';
+  setMsg(`${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)}`);
+  drawMap();
+}
+function onErr(e){setMsg('GPSエラー: '+e.message);document.getElementById('dot').className='gps-dot';document.getElementById('gps-txt').textContent='エラー';}
+function updateHUD(){
+  if(!startTime)return;
+  const elapsed=Date.now()-startTime,bMs=totalBreak+(breakStart?Date.now()-breakStart:0),rMs=elapsed-bMs;
+  const w=parseInt(document.getElementById('weight-in').value)||65;
+  document.getElementById('s-dist').textContent=totalDist.toFixed(2);
+  document.getElementById('s-dur').textContent=fmt(rMs);
+  document.getElementById('s-break').textContent=fmt(bMs);
+  document.getElementById('s-gain').textContent=Math.round(altGain);
+  document.getElementById('s-cal').textContent=cal(totalDist,w,rMs/3600000);
+}
+function stopRide(){
+  if(watchId!==null)navigator.geolocation.clearWatch(watchId);
+  clearInterval(rideTimer);
+  if(breakStart){totalBreak+=Date.now()-breakStart;breakStart=null}
+  document.getElementById('btn-stop').style.display='none';
+  document.getElementById('btn-start').style.display='';
+  document.getElementById('btn-start').textContent='▶ 再開';
+  ['btn-save','btn-gpx','btn-reset'].forEach(id=>document.getElementById(id).style.display='');
+  document.getElementById('dot').className='gps-dot';
+  document.getElementById('gps-txt').textContent='停止';
+  setMsg(`完了 — ${points.length}点 / ${totalDist.toFixed(2)} km`);
+  buildCharts();
+}
+function saveRide(){
+  const w=parseInt(document.getElementById('weight-in').value)||65;
+  const elapsed=startTime?Date.now()-startTime:0,bMs=totalBreak,rMs=elapsed-bMs;
+  const ride={id:Date.now(),date:new Date().toLocaleString('ja-JP'),dist:totalDist.toFixed(2),duration:fmt(rMs),breakTime:fmt(bMs),calories:cal(totalDist,w,rMs/3600000),altGain:Math.round(altGain),fb_posted:false,points:points.map(p=>({lat:p.lat,lng:p.lng,alt:p.alt,t:p.t,speed:p.speed||0}))};
+  const arr=rides();arr.unshift(ride);saveRides(arr);
+  setMsg('保存しました！');document.getElementById('btn-save').style.display='none';
+}
+function resetRide(){
+  points=[];lastPoint=null;totalDist=0;altGain=0;lastAlt=null;totalBreak=0;breakStart=null;startTime=null;
+  ['s-dist','s-spd','s-dur','s-cal','s-gain','s-break'].forEach(id=>document.getElementById(id).textContent=id==='s-dist'?'0.00':id==='s-spd'?'0.0':id.includes('cal')||id.includes('gain')?'0':'00:00');
+  document.getElementById('s-alt').textContent='—';
+  ['btn-save','btn-gpx','btn-reset'].forEach(id=>document.getElementById(id).style.display='none');
+  document.getElementById('btn-start').style.display='';document.getElementById('btn-start').textContent='▶ 記録開始';
+  document.getElementById('dot').className='gps-dot';document.getElementById('gps-txt').textContent='待機中';
+  setMsg('「記録開始」を押してライドを開始します');
+  if(spdChart){spdChart.destroy();spdChart=null}if(altChart){altChart.destroy();altChart=null}
+  document.getElementById('seg-table-wrap').textContent='記録後に表示されます';
+  resize();
+}
+function exportGPX(){
+  if(!points.length)return;
+  const trk=points.map(p=>{const dt=new Date(p.t).toISOString();const al=p.alt!==null?`<ele>${p.alt.toFixed(1)}</ele>`:'';return`    <trkpt lat="${p.lat.toFixed(7)}" lon="${p.lng.toFixed(7)}">${al}<time>${dt}</time></trkpt>`}).join('\n');
+  const gpx=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1">\n  <trk><name>ライド</name><trkseg>\n${trk}\n  </trkseg></trk>\n</gpx>`;
+  const a=document.createElement('a');a.href='data:application/gpx+xml;charset=utf-8,'+encodeURIComponent(gpx);a.download=`ride_${Date.now()}.gpx`;a.click();
+}
+function setMsg(t){document.getElementById('msg').textContent=t}
+
+// ── Map ──
+function resize(){canvas.width=canvas.offsetWidth;canvas.height=canvas.offsetHeight||220;drawMap()}
+function drawMap(){
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);ctx.fillStyle='#111a15';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#1a2e1e';ctx.lineWidth=.5;
+  for(let x=0;x<W;x+=50){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}
+  for(let y=0;y<H;y+=50){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+  if(points.length<2){ctx.fillStyle='#3d6647';ctx.textAlign='center';ctx.font='13px DM Mono,monospace';ctx.fillText(points.length===0?'GPS取得後に経路が表示されます':'取得中...',W/2,H/2);return}
+  const lats=points.map(p=>p.lat),lngs=points.map(p=>p.lng);
+  const minLat=Math.min(...lats),maxLat=Math.max(...lats),minLng=Math.min(...lngs),maxLng=Math.max(...lngs);
+  const pad=40,dLat=maxLat-minLat||.001,dLng=maxLng-minLng||.001;
+  const toS=p=>({x:pad+(p.lng-minLng)/dLng*(W-pad*2),y:pad+(maxLat-p.lat)/dLat*(H-pad*2)});
+  ctx.beginPath();ctx.strokeStyle='#00E87A';ctx.lineWidth=2.5;ctx.lineJoin='round';ctx.lineCap='round';
+  points.forEach((p,i)=>{const s=toS(p);i===0?ctx.moveTo(s.x,s.y):ctx.lineTo(s.x,s.y)});ctx.stroke();
+  [{s:toS(points[0]),c:'#3d9bff'},{s:toS(points[points.length-1]),c:'#00E87A'}].forEach(({s,c})=>{ctx.beginPath();ctx.arc(s.x,s.y,6,0,Math.PI*2);ctx.fillStyle=c;ctx.fill()});
+}
+
+// ── Analysis ──
+function getSegs(pts){const segs=[];let cur=[],st=null;(pts||points).forEach(p=>{if(!st)st=p.t;cur.push(p);if(p.t-st>=SEG_MIN*60*1000){segs.push(cur);cur=[p];st=p.t}});if(cur.length>1)segs.push(cur);return segs}
+function buildCharts(){
+  if(points.length<2)return;
+  const segs=getSegs();
+  const labels=segs.map((_,i)=>`${i*SEG_MIN}–${(i+1)*SEG_MIN}分`);
+  const spdData=segs.map(s=>{const sp=s.filter(p=>p.speed!=null).map(p=>p.speed);return sp.length?parseFloat((sp.reduce((a,b)=>a+b)/sp.length).toFixed(1)):0});
+  const altData=segs.map(s=>{const al=s.filter(p=>p.alt!=null).map(p=>p.alt);return al.length?Math.round(al.reduce((a,b)=>a+b)/al.length):null});
+  const chartOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#3d6647',font:{size:10,family:'DM Mono'}},grid:{color:'#1e2e22'}},y:{ticks:{color:'#3d6647',font:{size:10,family:'DM Mono'}},grid:{color:'#1e2e22'}}}};
+  if(spdChart)spdChart.destroy();
+  spdChart=new Chart(document.getElementById('spd-chart'),{type:'bar',data:{labels,datasets:[{data:spdData,backgroundColor:'rgba(0,232,122,.3)',borderColor:'#00E87A',borderWidth:1,borderRadius:3}]},options:{...chartOpts,scales:{...chartOpts.scales,y:{...chartOpts.scales.y,beginAtZero:true}}}});
+  if(altChart)altChart.destroy();
+  altChart=new Chart(document.getElementById('alt-chart'),{type:'line',data:{labels,datasets:[{data:altData,borderColor:'#3d9bff',backgroundColor:'rgba(61,155,255,.1)',tension:.3,fill:true,pointRadius:3,pointBackgroundColor:'#3d9bff'}]},options:chartOpts});
+  const wrap=document.getElementById('seg-table-wrap');
+  if(!segs.length){wrap.textContent='データなし';return}
+  let html='<table class="seg-table"><thead><tr><th>区間</th><th>速度</th><th>高度</th><th>休憩</th></tr></thead><tbody>';
+  segs.forEach((seg,i)=>{const al=altData[i]!==null?altData[i]+'m':'—';const hb=seg.some(p=>p.speed<BREAK_THR);html+=`<tr><td>${labels[i]}</td><td class="num">${spdData[i]}</td><td>${al}</td><td>${hb?'あり':'なし'}</td></tr>`});
+  wrap.innerHTML=html+'</tbody></table>';
+}
+
+// ── Excel ──
+function renderDateList(){
+  const arr=rides(),el=document.getElementById('xl-date-list');
+  if(!arr.length){el.innerHTML='<div class="empty">保存済みライドがありません<br>先にライドを記録・保存してください</div>';return}
+  el.innerHTML=arr.map(r=>`<div class="date-row${selectedDateId===r.id?' selected':''}" onclick="selectDate(${r.id})"><div style="font-size:22px">🚴</div><div><div class="date-name">${r.date}</div><div class="date-meta">${r.dist}km · ${r.duration} · ${r.calories}kcal · ↑${r.altGain}m</div></div><div class="date-check">✓</div></div>`).join('');
+}
+function selectDate(id){selectedDateId=id;document.getElementById('xl-preview-section').style.display='none';document.getElementById('xl-msg').textContent='';renderDateList()}
+function getRide(id){return rides().find(r=>r.id===id)||null}
+function buildSummaryRows(r){return[['項目','値','単位'],['走行日',r.date,''],['走行距離',parseFloat(r.dist),'km'],['走行時間',r.duration,''],['休憩時間',r.breakTime,''],['累積獲得標高',r.altGain,'m'],['消費カロリー',r.calories,'kcal'],['GPSログ点数',(r.points||[]).length,'点'],['Facebook投稿',r.fb_posted?'済み':'未投稿','']]}
+function buildSegRows(r){
+  const pts=r.points||[];if(!pts.length)return[['データなし']];
+  const segs=getSegs(pts);
+  const rows=[['区間','開始時刻','終了時刻','平均速度(km/h)','最高速度(km/h)','距離(km)','平均高度(m)','休憩あり']];
+  segs.forEach((seg,i)=>{
+    const sp=seg.filter(p=>p.speed!=null).map(p=>p.speed);
+    const al=seg.filter(p=>p.alt!=null).map(p=>p.alt);
+    const d=seg.length>1?seg.slice(1).reduce((a,p,j)=>a+hav(seg[j],p),0):0;
+    const avg=sp.length?parseFloat((sp.reduce((a,b)=>a+b)/sp.length).toFixed(1)):0;
+    const mx=sp.length?parseFloat(Math.max(...sp).toFixed(1)):0;
+    const avgAl=al.length?Math.round(al.reduce((a,b)=>a+b)/al.length):null;
+    rows.push([`${i*SEG_MIN}–${(i+1)*SEG_MIN}分`,new Date(seg[0].t).toLocaleTimeString('ja-JP'),new Date(seg[seg.length-1].t).toLocaleTimeString('ja-JP'),avg,mx,parseFloat(d.toFixed(3)),avgAl??'—',seg.some(p=>p.speed<BREAK_THR)?'あり':'なし']);
+  });
+  return rows;
+}
+function buildGPSRows(r){
+  const pts=r.points||[];if(!pts.length)return[['データなし']];
+  const rows=[['No.','時刻','緯度','経度','高度(m)','速度(km/h)','区間距離(km)']];
+  pts.forEach((p,i)=>rows.push([i+1,new Date(p.t).toLocaleTimeString('ja-JP'),parseFloat(p.lat.toFixed(6)),parseFloat(p.lng.toFixed(6)),p.alt!==null?parseFloat(p.alt.toFixed(1)):'—',parseFloat((p.speed||0).toFixed(2)),i>0?parseFloat(hav(pts[i-1],p).toFixed(4)):0]));
+  return rows;
+}
+function buildChartRows(r){
+  const pts=r.points||[];const segs=getSegs(pts);
+  const rows=[['区間(分)','平均速度(km/h)','最高速度(km/h)','平均高度(m)']];
+  segs.forEach((seg,i)=>{const sp=seg.filter(p=>p.speed!=null).map(p=>p.speed);const al=seg.filter(p=>p.alt!=null).map(p=>p.alt);const avg=sp.length?parseFloat((sp.reduce((a,b)=>a+b)/sp.length).toFixed(1)):0;const mx=sp.length?parseFloat(Math.max(...sp).toFixed(1)):0;const avgAl=al.length?Math.round(al.reduce((a,b)=>a+b)/al.length):null;rows.push([`${i*SEG_MIN}–${(i+1)*SEG_MIN}`,avg,mx,avgAl??'—'])});
+  return rows;
+}
+function previewExcel(){
+  if(!selectedDateId){document.getElementById('xl-msg').textContent='走行日を選択してください';return}
+  const r=getRide(selectedDateId);if(!r){return}
+  const rows=buildSummaryRows(r);
+  const tbl=document.getElementById('xl-preview-table');
+  tbl.innerHTML=rows.map((row,i)=>`<tr>${row.map(c=>i===0?`<th>${c}</th>`:`<td>${c}</td>`).join('')}</tr>`).join('');
+  document.getElementById('xl-preview-section').style.display='block';
+  document.getElementById('xl-msg').textContent='';
+}
+function exportExcel(){
+  if(!selectedDateId){document.getElementById('xl-msg').textContent='走行日を選択してください';return}
+  const r=getRide(selectedDateId);if(!r){return}
+  const wb=XLSX.utils.book_new();
+  const mkSheet=(rows,name,widths)=>{const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=widths.map(w=>({wch:w}));XLSX.utils.book_append_sheet(wb,ws,name)};
+  if(document.getElementById('sh-summary').checked) mkSheet(buildSummaryRows(r),'サマリー',[22,20,10]);
+  if(document.getElementById('sh-segments').checked) mkSheet(buildSegRows(r),'10分区間',[14,10,10,16,16,12,12,10]);
+  if(document.getElementById('sh-gps').checked) mkSheet(buildGPSRows(r),'GPSログ',[6,10,13,13,10,13,14]);
+  if(document.getElementById('sh-chart').checked) mkSheet(buildChartRows(r),'スピードデータ',[14,18,18,14]);
+  XLSX.writeFile(wb,`ride_${r.date.replace(/[\/: ,]/g,'-')}.xlsx`);
+  document.getElementById('xl-msg').textContent='ダウンロードしました ✓';
+}
+
+// ── Facebook ──
+function getCurStats(){
+  const w=parseInt(document.getElementById('weight-in').value)||65;
+  const elapsed=startTime?Date.now()-startTime:0,bMs=totalBreak+(breakStart?Date.now()-breakStart:0),rMs=elapsed-bMs;
+  return{dist:totalDist.toFixed(2),duration:fmt(rMs),breakTime:fmt(bMs),calories:cal(totalDist,w,rMs/3600000),altGain:Math.round(altGain)};
+}
+function generatePostText(){
+  const s=getCurStats();if(parseFloat(s.dist)===0){document.getElementById('fb-msg').textContent='先にライドを記録してください';return}
+  document.getElementById('post-text').value=`🚴 今日のライド記録\n\n走行距離: ${s.dist} km\n走行時間: ${s.duration}\n休憩時間: ${s.breakTime}\n獲得標高: ${s.altGain} m\n消費カロリー: ${s.calories} kcal\n\n#サイクリング #cycling #ライドログ`;
+}
+function previewPost(){
+  const s=getCurStats(),text=document.getElementById('post-text').value.trim();
+  if(!text){document.getElementById('fb-msg').textContent='投稿文を入力してください';return}
+  document.getElementById('preview-text').textContent=text;
+  document.getElementById('pv-dist').textContent=s.dist;document.getElementById('pv-dur').textContent=s.duration;document.getElementById('pv-cal').textContent=s.calories;
+  document.getElementById('post-preview').style.display='block';document.getElementById('fb-msg').textContent='';
+}
+function fbLogin(){
+  if(typeof FB==='undefined'){document.getElementById('fb-msg').textContent='設定タブでApp IDを入力しSDKを初期化してください';switchTab('settings');return}
+  FB.login(r=>{if(r.authResponse)onFbLogin(r.authResponse);else document.getElementById('fb-msg').textContent='ログインがキャンセルされました'},{scope:'public_profile,publish_posts'});
+}
+function onFbLogin(auth){
+  fbToken=auth.accessToken;fbUserId=auth.userID;fbLoggedIn=true;
+  FB.api('/me',{fields:'name'},r=>{
+    document.getElementById('fb-name').textContent=r.name||'ユーザー';
+    document.getElementById('fb-avatar').textContent=(r.name||'U').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    document.getElementById('fb-status').className='status-pill connected';document.getElementById('fb-status').textContent='● 接続済み';
+    document.getElementById('btn-fb-login').style.display='none';document.getElementById('btn-fb-logout').style.display='';
+  });
+}
+function fbLogout(){if(typeof FB!=='undefined')FB.logout(()=>{});fbLoggedIn=false;fbToken=null;fbUserId=null;document.getElementById('fb-name').textContent='未ログイン';document.getElementById('fb-avatar').textContent='?';document.getElementById('fb-status').className='status-pill disconnected';document.getElementById('fb-status').textContent='● 未接続';document.getElementById('btn-fb-login').style.display='';document.getElementById('btn-fb-logout').style.display='none';document.getElementById('fb-msg').textContent='ログアウトしました';}
+function postToFacebook(){
+  if(!fbLoggedIn||!fbToken){document.getElementById('fb-msg').textContent='Facebookにログインしてください';return}
+  const text=document.getElementById('post-text').value.trim();if(!text){document.getElementById('fb-msg').textContent='投稿文を入力してください';return}
+  document.getElementById('fb-msg').textContent='投稿中...';
+  const pt=localStorage.getItem('fb_page_token')||'';
+  FB.api('/me/feed','POST',{message:text,access_token:pt||fbToken},r=>{
+    if(r&&!r.error){document.getElementById('fb-msg').textContent='投稿しました！ ID: '+r.id;const arr=rides();if(arr.length){arr[0].fb_posted=true;saveRides(arr)}}
+    else document.getElementById('fb-msg').textContent='エラー: '+(r&&r.error?r.error.message:'投稿に失敗');
+  });
+}
+function saveFbSettings(){localStorage.setItem('fb_app_id',document.getElementById('fb-app-id').value.trim());localStorage.setItem('fb_page_token',document.getElementById('fb-page-token').value.trim())}
+function initFBSDK(){
+  const appId=document.getElementById('fb-app-id').value.trim();
+  if(!appId){document.getElementById('sdk-msg').textContent='App IDを入力してください';return}
+  localStorage.setItem('fb_app_id',appId);
+  if(typeof FB!=='undefined'){document.getElementById('sdk-msg').textContent='既にSDK読み込み済みです';return}
+  const s=document.createElement('script');s.src='https://connect.facebook.net/ja_JP/sdk.js';
+  s.onload=()=>{FB.init({appId,cookie:true,xfbml:true,version:'v19.0'});FB.getLoginStatus(r=>{if(r.status==='connected')onFbLogin(r.authResponse);else document.getElementById('sdk-msg').textContent='SDK初期化完了。ログインしてください'})};
+  s.onerror=()=>{document.getElementById('sdk-msg').textContent='SDKの読み込みに失敗しました'};
+  document.head.appendChild(s);document.getElementById('sdk-msg').textContent='SDK読み込み中...';
+}
+
+// ── History ──
+function renderHistory(){
+  const arr=rides(),el=document.getElementById('hist-list');
+  if(!arr.length){el.innerHTML='<div class="empty">まだ保存されたライドがありません</div>';return}
+  el.innerHTML=arr.map(r=>`<div class="hist-card"><div><div class="hist-date">${r.date}</div><div class="hist-meta">${r.dist}km &nbsp;|&nbsp; ${r.duration}<br>休憩 ${r.breakTime} &nbsp;|&nbsp; ↑${r.altGain}m &nbsp;|&nbsp; ${r.calories}kcal</div></div><div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end"><span class="badge">${r.dist}km</span>${r.fb_posted?'<span class="badge-fb">FB済</span>':''}<button class="btn" style="font-size:11px;padding:3px 8px;margin-top:4px" onclick="delRide(${r.id})">✕</button></div></div>`).join('');
+}
+function delRide(id){const arr=rides().filter(r=>r.id!==id);saveRides(arr);if(selectedDateId===id)selectedDateId=null;renderHistory()}
+function clearHistory(){if(confirm('すべての履歴を削除しますか？')){localStorage.removeItem('cycling_rides');selectedDateId=null;renderHistory()}}
+
+window.addEventListener('resize',resize);
+resize();
+</script>
+</body>
+</html>
