@@ -267,6 +267,15 @@ const BREAK_THR=1.0, SEG_MIN=10;
 
 // ── State ──
 let points=[], watchId=null, startTime=null, rideTimer=null;
+let wakeLock=null;
+async function acquireWakeLock(){
+  if(!('wakeLock' in navigator)){setMsg('⚠ このブラウザはスリープ防止に非対応です');return;}
+  try{wakeLock=await navigator.wakeLock.request('screen');wakeLock.addEventListener('release',()=>{wakeLock=null;});}
+  catch(e){console.warn('WakeLock取得失敗:',e);}
+}
+function releaseWakeLock(){if(wakeLock){wakeLock.release();wakeLock=null;}}
+// 画面が再表示されたとき（バックグラウンドから戻った時）に再取得
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&rideTimer)acquireWakeLock();});
 let totalDist=0, lastPoint=null, totalBreak=0, breakStart=null;
 let altGain=0, lastAlt=null, spdChart=null, altChart=null;
 let fbLoggedIn=false, fbToken=null, fbUserId=null;
@@ -331,6 +340,7 @@ function startRide(){
   document.getElementById('gps-txt').textContent='記録中';
   if(!startTime) startTime=Date.now();
   rideTimer=setInterval(updateHUD,1000);
+  acquireWakeLock();
   watchId=navigator.geolocation.watchPosition(onPos, onErr, {enableHighAccuracy:true, maximumAge:2000, timeout:15000});
 }
 
@@ -366,6 +376,7 @@ function updateHUD(){
 function stopRide(){
   if(watchId!==null) navigator.geolocation.clearWatch(watchId);
   clearInterval(rideTimer);
+  releaseWakeLock();
   if(breakStart){totalBreak+=Date.now()-breakStart;breakStart=null;}
   document.getElementById('btn-stop').style.display='none';
   document.getElementById('btn-start').style.display='';
@@ -387,6 +398,7 @@ function saveRide(){
 
 function resetRide(){
   points=[];lastPoint=null;totalDist=0;altGain=0;lastAlt=null;totalBreak=0;breakStart=null;startTime=null;
+  releaseWakeLock();
   ['s-dist','s-spd','s-dur','s-cal','s-gain','s-break'].forEach(id=>document.getElementById(id).textContent=id==='s-dist'?'0.00':id==='s-spd'?'0.0':['s-cal','s-gain'].includes(id)?'0':'00:00');
   document.getElementById('s-alt').textContent='—';
   ['btn-save','btn-gpx','btn-reset'].forEach(id=>document.getElementById(id).style.display='none');
