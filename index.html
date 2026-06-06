@@ -337,11 +337,20 @@ function startRide(){
   document.getElementById('btn-start').style.display='none';
   document.getElementById('btn-stop').style.display='';
   document.getElementById('dot').className='gps-dot on';
-  document.getElementById('gps-txt').textContent='記録中';
-  if(!startTime) startTime=Date.now();
-  rideTimer=setInterval(updateHUD,1000);
-  acquireWakeLock();
-  watchId=navigator.geolocation.watchPosition(onPos, onErr, {enableHighAccuracy:true, maximumAge:2000, timeout:15000});
+  document.getElementById('gps-txt').textContent='GPS取得中...';
+  setMsg('位置情報の許可をタップしてください');
+  if(rideTimer){clearInterval(rideTimer);rideTimer=null;}
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    if(!startTime){
+      startTime=Date.now();
+      rideTimer=setInterval(updateHUD,1000);
+      acquireWakeLock();
+      document.getElementById('gps-txt').textContent='記録中';
+      setMsg('記録中...');
+    }
+    onPos(pos);
+  }, onErr, {enableHighAccuracy:true, maximumAge:2000, timeout:15000});
 }
 
 function onPos(pos){
